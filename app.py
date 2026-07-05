@@ -1,19 +1,16 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
-import uuid
 import time
+import uuid
 
 app = FastAPI()
 
-# Your assigned allowed origin
+# EXACT values assigned in the question
 ALLOWED_ORIGIN = "https://dash-d8ygdp.example.com"
-
-# Replace this with YOUR IITM login email EXACTLY
 EMAIL = "22f1001328@ds.study.iitm.ac.in"
 
-# CORS configuration
+# Strict CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[ALLOWED_ORIGIN],
@@ -22,36 +19,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Middleware for required headers
+@app.middleware("http")
+async def add_headers(request: Request, call_next):
+    start = time.perf_counter()
 
-# Middleware to add required headers
-class HeaderMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        start = time.perf_counter()
+    response = await call_next(request)
 
-        response = await call_next(request)
+    response.headers["X-Request-ID"] = str(uuid.uuid4())
+    response.headers["X-Process-Time"] = f"{time.perf_counter() - start:.6f}"
 
-        process_time = time.perf_counter() - start
-
-        response.headers["X-Request-ID"] = str(uuid.uuid4())
-        response.headers["X-Process-Time"] = f"{process_time:.6f}"
-
-        return response
-
-
-app.add_middleware(HeaderMiddleware)
+    return response
 
 
 @app.get("/stats")
 async def stats(values: str):
     try:
-        numbers = [int(x.strip()) for x in values.split(",") if x.strip() != ""]
+        numbers = [int(v.strip()) for v in values.split(",") if v.strip()]
     except ValueError:
         return JSONResponse(
             status_code=400,
             content={"error": "values must contain only integers"},
         )
 
-    if len(numbers) == 0:
+    if not numbers:
         return JSONResponse(
             status_code=400,
             content={"error": "No values supplied"},
